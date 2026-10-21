@@ -49,9 +49,9 @@ const server=http.createServer(async(req,res)=>{
   let m=p.match(/^\/api\/rooms\/([A-Z0-9]+)\/join$/i);
   if(req.method==="POST"&&m){const r=rooms.get(m[1].toUpperCase());if(!r)return send(res,404,{error:"Стол не найден"});addPlayer(r,user);return send(res,200,{room:publicRoom(r,user.id)});}
   m=p.match(/^\/api\/rooms\/([A-Z0-9]+)\/start$/i);
-  if(req.method==="POST"&&m){const r=rooms.get(m[1].toUpperCase());if(!r)return send(res,404,{error:"Стол не найден"});startGame(r,user.id);return send(res,200,{room:publicRoom(r,user.id)});}
+  if(req.method==="POST"&&m){const r=rooms.get(m[1].toUpperCase());if(!r)return send(res,404,{error:"Стол не найден"});startGame(r,user.id);for(const player of r.players){const stored=users.get(player.id);if(stored)stored.balance=player.balance;}return send(res,200,{room:publicRoom(r,user.id)});}
   m=p.match(/^\/api\/rooms\/([A-Z0-9]+)\/action$/i);
-  if(req.method==="POST"&&m){const r=rooms.get(m[1].toUpperCase());if(!r||!r.players.some(x=>x.id===user.id))return send(res,404,{error:"Стол не найден или вы не участник"});const input=await body(req);act(r,user.id,input.action,input.amount);const rp=r.players.find(x=>x.id===user.id);user.balance=rp.balance;return send(res,200,{room:publicRoom(r,user.id),balance:user.balance});}
+  if(req.method==="POST"&&m){const r=rooms.get(m[1].toUpperCase());if(!r||!r.players.some(x=>x.id===user.id))return send(res,404,{error:"Стол не найден или вы не участник"});const input=await body(req);act(r,user.id,input.action,input.amount);for(const player of r.players){const stored=users.get(player.id);if(stored)stored.balance=player.balance;}return send(res,200,{room:publicRoom(r,user.id),balance:user.balance});}
   m=p.match(/^\/api\/rooms\/([A-Z0-9]+)$/i);
   if(req.method==="GET"&&m){const r=rooms.get(m[1].toUpperCase());if(!r||!r.players.some(x=>x.id===user.id))return send(res,404,{error:"Стол не найден или вы не участник"});return send(res,200,{room:publicRoom(r,user.id)});}
   if(p.startsWith("/api/"))return send(res,404,{error:"API-маршрут не найден"});
