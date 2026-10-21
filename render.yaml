@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: trynka-game
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: ALLOW_DEMO_AUTH
+        value: "false"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
