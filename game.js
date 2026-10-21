@@ -22,7 +22,7 @@ export function compareHands(a,b){
  return {winner:x.score>y.score?"a":"b",reason:"score",a:x,b:y};
 }
 export function createRoom(id,name,host){
- return {id,name:(name||"Стол Трыньки").slice(0,40),hostId:host.id,players:[],status:"waiting",phase:"waiting",pot:0,currentBet:0,round:0,currentPlayerId:null,deck:[],darkAllowed:true,darkPlayerId:null,darkBet:0,history:[],message:"Ждём игроков",winnerId:null,tieCandidates:[]};
+ return {id,name:(name||"Стол Трыньки").slice(0,40),hostId:host.id,players:[],status:"waiting",phase:"waiting",pot:0,currentBet:0,round:0,currentPlayerId:null,deck:[],darkAllowed:true,darkPlayerId:null,darkBet:0,roundStarterId:host.id,history:[],message:"Ждём игроков",winnerId:null,tieCandidates:[]};
 }
 export function addPlayer(room,user){
  if(room.status!=="waiting")throw Error("Партия уже началась");
@@ -43,7 +43,7 @@ function active(room){return room.players.filter(p=>p.active&&!p.folded);}
 function next(room,id){const i=room.players.findIndex(p=>p.id===id);for(let k=1;k<=room.players.length;k++){const p=room.players[(i+k)%room.players.length];if(p&&p.active&&!p.folded)return p.id;}return null;}
 function endIfOne(room){const a=active(room);if(a.length===1){a[0].balance+=room.pot;room.pot=0;room.winnerId=a[0].id;room.status="finished";room.phase="finished";room.currentPlayerId=null;room.message=a[0].name+" забирает банк";room.history.push(room.message);return true;}return false;}
 function deal(room,starter){room.deck=createDeck();for(const p of room.players){p.cards=room.deck.splice(0,3);p.cardsVisible=true;p.mode="normal";p.folded=false;p.active=true;p.bet=0;p.acted=false;p.ready=false;}room.status="playing";room.phase="mode-choice";room.currentPlayerId=starter;room.currentBet=0;room.round=0;room.darkAllowed=true;room.message="Выберите обычную игру или тёмную";room.history.push("Карты розданы");}
-function betting(room,starter){room.phase="betting";room.round=1;room.currentBet=Math.max(0,...room.players.map(p=>p.bet));room.players.forEach(p=>{p.acted=false;});room.currentPlayerId=starter;room.darkAllowed=!room.darkPlayerId;room.message="Началась торговля";}
+function betting(room,starter){room.phase="betting";room.round=1;room.currentBet=Math.max(0,...room.players.map(p=>p.bet));room.players.forEach(p=>{p.acted=false;});room.currentPlayerId=starter;room.roundStarterId=starter;room.message="Началась торговля";}
 function showdown(room,a,b){
  const r=compareHands(a.cards,b.cards);
  if(r.reason==="redeal"){room.phase="redeal-pending";room.currentPlayerId=(r.a.kind==="redeal"?a:b).id;room.message="Три десятки: можно запустить пересдачу";return;}
@@ -61,7 +61,7 @@ export function act(room,userId,action,amount=10){
  const p=pby(room,userId);if(room.currentPlayerId!==userId)throw Error("Сейчас ход другого игрока");if(p.folded)throw Error("Вы уже пасанули");
  if(room.phase==="mode-choice"){
   if(action!=="normal"&&action!=="dark")throw Error("Выберите обычную игру или тёмную");
-  if(action==="dark"){if(!room.darkAllowed)throw Error("В этом круге тёмная уже закрыта");const target=Math.max(Number(amount)||11,MIN_BET+1,room.currentBet+1);if(target>MAX_BET)throw Error("Нельзя затемнить выше лимита ставки");put(room,p,target-p.bet);p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;room.darkAllowed=false;}else{p.mode="normal";p.cardsVisible=true;room.darkAllowed=false;}
+  if(action==="dark"){if(!room.darkAllowed)throw Error("В этом круге тёмная уже закрыта");const target=Math.max(Number(amount)||11,MIN_BET+1,room.currentBet+1);if(target>MAX_BET)throw Error("Нельзя затемнить выше лимита ставки");put(room,p,target-p.bet);p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;}else{p.mode="normal";p.cardsVisible=true;if(p.id===room.players[0].id)room.darkAllowed=false;}
   p.ready=true;room.history.push(p.name+(action==="dark"?" играет в тёмную":" выбрал обычную игру"));
   const n=room.players.find(x=>!x.ready);if(n)room.currentPlayerId=n.id;else betting(room,room.players[0].id);return;
  }
@@ -76,12 +76,13 @@ export function act(room,userId,action,amount=10){
   throw Error("В сваре можно разделить банк или начать новую партию");
  }
  if(room.phase!=="betting")throw Error("Недопустимая стадия игры");
+ if(action!=="dark"&&room.darkAllowed&&userId===room.roundStarterId&&room.darkPlayerId!==userId)room.darkAllowed=false;
  if(action==="pass"){p.folded=true;p.acted=true;room.history.push(p.name+" пас");if(endIfOne(room))return;}
  else if(action==="look"){if(p.mode!=="dark")throw Error("Карты уже доступны");p.mode="normal";p.cardsVisible=true;p.acted=true;room.history.push(p.name+" посмотрел карты");}
  else if(action==="support"){const required=room.darkPlayerId&&p.id!==room.darkPlayerId&&p.mode!=="dark"?Math.max(room.currentBet,room.darkBet*2):room.currentBet;const due=required-p.bet;if(due<=0)throw Error("Ставка уже уравнена");if(due>p.balance){p.folded=true;room.history.push(p.name+" выбыл: недостаточно фишек");if(endIfOne(room))return;}else{p.balance-=due;p.bet+=due;room.pot+=due;p.acted=true;}}
- else if(action==="raise"||action==="dark"){if(action==="dark"&&!room.darkAllowed)throw Error("Нельзя начать тёмную в этом круге");const target=Number(amount);if(!Number.isInteger(target)||target<MIN_BET||target<=room.currentBet||target>MAX_BET)throw Error("Повышение должно быть не меньше 10, выше текущей ставки и не больше 100");const due=target-p.bet;if(due>p.balance){p.folded=true;if(endIfOne(room))return;}else{put(room,p,due);p.acted=true;if(action==="dark"){p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;}else if(room.darkPlayerId){room.darkPlayerId=null;room.darkBet=0;}room.darkAllowed=false;room.history.push(p.name+" повысил ставку до "+target);}}
+ else if(action==="raise"||action==="dark"){if(action==="dark"&&!room.darkAllowed)throw Error("Нельзя начать тёмную в этом круге");const target=Number(amount);if(!Number.isInteger(target)||target<MIN_BET||target<=room.currentBet||target>MAX_BET)throw Error("Повышение должно быть не меньше 10, выше текущей ставки и не больше 100");const due=target-p.bet;if(due>p.balance){p.folded=true;if(endIfOne(room))return;}else{put(room,p,due);p.acted=true;if(action==="dark"){p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;}else if(room.darkPlayerId&&p.mode!=="dark"){room.darkPlayerId=null;room.darkBet=0;}room.darkAllowed=false;room.history.push(p.name+" повысил ставку до "+target);}}
  else if(action==="reveal"){if(room.round<2)throw Error("Вскрытие доступно со второго круга торгов");const prev=room.players.slice(0,p.seat).reverse().find(x=>x.active&&!x.folded)||room.players.slice().reverse().find(x=>x.id!==p.id&&x.active&&!x.folded);if(!prev)throw Error("Нет соперника для вскрытия");showdown(room,p,prev);return;}
  else throw Error("Неизвестное действие");
  const a=active(room);if(a.length===1){endIfOne(room);return;}
- if(a.every(x=>x.acted&&x.bet>=(room.darkPlayerId&&x.id!==room.darkPlayerId&&x.mode!=="dark"?Math.max(room.currentBet,room.darkBet*2):room.currentBet))){room.round++;a.forEach(x=>x.acted=false);room.darkAllowed=true;room.currentPlayerId=a[0].id;room.message="Круг торгов "+room.round;room.history.push(room.message);}else room.currentPlayerId=next(room,userId);
+ if(a.every(x=>x.acted&&x.bet>=(room.darkPlayerId&&x.id!==room.darkPlayerId&&x.mode!=="dark"?Math.max(room.currentBet,room.darkBet*2):room.currentBet))){room.round++;a.forEach(x=>x.acted=false);room.darkAllowed=true;room.roundStarterId=a[0].id;room.currentPlayerId=a[0].id;room.message="Круг торгов "+room.round;room.history.push(room.message);}else room.currentPlayerId=next(room,userId);
 }
