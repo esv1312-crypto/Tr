@@ -41,20 +41,37 @@ function publicPlayer(p,viewer){return {id:p.id,name:p.name,balance:p.balance,se
 export function publicRoom(room,viewer){return {id:room.id,name:room.name,hostId:room.hostId,status:room.status,phase:room.phase,pot:room.pot,currentBet:room.currentBet,round:room.round,currentPlayerId:room.currentPlayerId,darkAllowed:room.darkAllowed,message:room.message,winnerId:room.winnerId,players:room.players.map(p=>publicPlayer(p,viewer)),history:room.history.slice(-20)};}
 function active(room){return room.players.filter(p=>p.active&&!p.folded);}
 function next(room,id){const i=room.players.findIndex(p=>p.id===id);for(let k=1;k<=room.players.length;k++){const p=room.players[(i+k)%room.players.length];if(p&&p.active&&!p.folded)return p.id;}return null;}
-function endIfOne(room){const a=active(room);if(a.length===1){a[0].balance+=room.pot;room.pot=0;room.winnerId=a[0].id;room.status="finished";room.phase="finished";room.currentPlayerId=null;room.message=a[0].name+" забирает банк";room.history.push(room.message);return true;}return false;}
+function clockwiseAfter(room,id){const i=room.players.findIndex(p=>p.id===id);if(i<0)return room.players[0]?.id||null;return room.players[(i+1)%room.players.length]?.id||null;}
+function startNextHand(room,dealerId,resultMessage){
+ const dealer=pby(room,dealerId),firstId=clockwiseAfter(room,dealerId),first=pby(room,firstId);
+ room.winnerId=dealerId;
+ if(room.players.some(x=>x.balance<MIN_BET)){
+  room.status="finished";room.phase="finished";room.currentPlayerId=null;
+  room.message=resultMessage+". Следующая раздача невозможна: одному из игроков не хватает 10 фишек.";
+  room.history.push(room.message);return;
+ }
+ room.pot=0;room.currentBet=0;
+ deal(room,firstId);
+ for(const x of room.players)put(room,x,MIN_BET);
+ room.currentBet=MIN_BET;
+ room.dealerId=dealerId;
+ room.message=resultMessage+". "+dealer.name+" раздаёт; "+first.name+" ходит первым по часовой стрелке.";
+ room.history.push(room.message);
+}
+function endIfOne(room){const a=active(room);if(a.length===1){const winner=a[0];winner.balance+=room.pot;room.pot=0;const result=winner.name+" забирает банк";startNextHand(room,winner.id,result);return true;}return false;}
 function deal(room,starter){room.deck=createDeck();for(const p of room.players){p.cards=room.deck.splice(0,3);p.cardsVisible=true;p.mode="normal";p.folded=false;p.active=true;p.bet=0;p.acted=false;p.ready=false;}room.status="playing";room.phase="mode-choice";room.currentPlayerId=starter;room.currentBet=0;room.round=0;room.darkAllowed=true;room.message="Выберите обычную игру или тёмную";room.history.push("Карты розданы");}
 function betting(room,starter){room.phase="betting";room.round=1;room.currentBet=Math.max(0,...room.players.map(p=>p.bet));room.players.forEach(p=>{p.acted=false;});room.currentPlayerId=starter;room.roundStarterId=starter;room.message="Началась торговля";}
 function showdown(room,a,b){
  const r=compareHands(a.cards,b.cards);
  if(r.reason==="redeal"){room.phase="redeal-pending";room.currentPlayerId=(r.a.kind==="redeal"?a:b).id;room.message="Три десятки: можно запустить пересдачу";return;}
  if(r.reason==="tie"){room.phase="svara-pending";room.tieCandidates=[a.id,b.id];room.currentPlayerId=a.id;room.message="Равные очки: свара";return;}
- const w=r.winner==="a"?a:b;w.balance+=room.pot;room.pot=0;room.winnerId=w.id;room.status="finished";room.phase="finished";room.currentPlayerId=null;room.message=w.name+" выиграл вскрытие";room.history.push(room.message);
+ const w=r.winner==="a"?a:b;w.balance+=room.pot;room.pot=0;startNextHand(room,w.id,w.name+" выиграл вскрытие");
 }
 export function startGame(room,userId){
  if(room.hostId!==userId)throw Error("Начать игру может создатель стола");
  if(room.status!=="waiting"||room.players.length<2||room.players.length>8)throw Error("Для старта нужно от 2 до 8 игроков");
- for(const p of room.players){if(p.balance<MIN_BET)throw Error(p.name+": недостаточно фишек");put(room,p,MIN_BET);}
- deal(room,room.players[0].id);room.history.push("Каждый внёс анте 10");
+ for(const p of room.players){if(p.balance<MIN_BET)throw Error(p.name+": недостаточно фишек");}
+ deal(room,room.players[0].id);for(const p of room.players)put(room,p,MIN_BET);room.currentBet=MIN_BET;room.history.push("Каждый внёс анте 10");
 }
 export function act(room,userId,action,amount=10){
  if(room.status!=="playing")throw Error("Партия не принимает ходы");
@@ -71,7 +88,7 @@ export function act(room,userId,action,amount=10){
   room.currentBet=0;room.round++;room.darkPlayerId=null;room.darkBet=0;room.darkAllowed=true;room.phase="betting";room.currentPlayerId=initiator.id;room.message="Пересдача: анте повторно не взимается";room.history.push(room.message);return;
  }
  if(room.phase==="svara-pending"){
-  if(action==="split"){const cs=room.tieCandidates.map(id=>pby(room,id));const share=Math.floor(room.pot/cs.length);cs.forEach(x=>x.balance+=share);room.pot=0;room.status="finished";room.phase="finished";room.currentPlayerId=null;room.message="Банк разделён";return;}
+  if(action==="split"){const cs=room.tieCandidates.map(id=>pby(room,id));const share=Math.floor(room.pot/cs.length),remainder=room.pot-share*cs.length;cs.forEach((x,i)=>x.balance+=share+(i===0?remainder:0));room.pot=0;startNextHand(room,p.id,"Банк разделён между "+cs.map(x=>x.name).join(" и "));return;}
   if(action==="redeal"){room.deck=createDeck();for(const x of active(room)){x.cards=room.deck.splice(0,3);x.cardsVisible=true;x.mode="normal";x.bet=0;x.acted=false;}room.currentBet=0;room.round=1;room.darkPlayerId=null;room.darkBet=0;room.phase="betting";room.currentPlayerId=room.tieCandidates[0];room.darkAllowed=false;room.message="Свара: тёмная игра запрещена";return;}
   throw Error("В сваре можно разделить банк или начать новую партию");
  }
