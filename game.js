@@ -59,7 +59,7 @@ function startNextHand(room,dealerId,resultMessage){
  room.history.push(room.message);
 }
 function endIfOne(room){const a=active(room);if(a.length===1){const winner=a[0];winner.balance+=room.pot;room.pot=0;const result=winner.name+" забирает банк";startNextHand(room,winner.id,result);return true;}return false;}
-function deal(room,starter){room.deck=createDeck();for(const p of room.players){p.cards=room.deck.splice(0,3);p.cardsVisible=true;p.mode="normal";p.folded=false;p.active=true;p.bet=0;p.acted=false;p.ready=false;}room.status="playing";room.phase="mode-choice";room.currentPlayerId=starter;room.roundStarterId=starter;room.currentBet=0;room.round=0;room.darkAllowed=true;room.message="Выберите обычную игру или тёмную";room.history.push("Карты розданы");}
+function deal(room,starter){room.deck=createDeck();for(const p of room.players){p.cards=room.deck.splice(0,3);p.cardsVisible=false;p.mode="normal";p.folded=false;p.active=true;p.bet=0;p.acted=false;p.ready=false;}room.status="playing";room.phase="mode-choice";room.currentPlayerId=starter;room.roundStarterId=starter;room.currentBet=0;room.round=0;room.darkAllowed=true;room.message="Выберите обычную игру или тёмную";room.history.push("Карты розданы");}
 function betting(room,starter){room.phase="betting";room.round=1;room.currentBet=Math.max(0,...room.players.map(p=>p.bet));room.players.forEach(p=>{p.acted=false;});room.currentPlayerId=starter;room.roundStarterId=starter;room.message="Началась торговля";}
 function showdown(room,a,b){
  const r=compareHands(a.cards,b.cards);
