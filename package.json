@@ -1,0 +1,15 @@
+{
+  "name": "trynka-telegram-mini-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multiplayer Trynka card game for Telegram Mini Apps",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check game.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
