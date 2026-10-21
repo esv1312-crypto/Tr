@@ -78,7 +78,7 @@ export function act(room,userId,action,amount=10){
  const p=pby(room,userId);if(room.currentPlayerId!==userId)throw Error("Сейчас ход другого игрока");if(p.folded)throw Error("Вы уже пасанули");
  if(room.phase==="mode-choice"){
   if(action!=="normal"&&action!=="dark")throw Error("Выберите обычную игру или тёмную");
-  if(action==="dark"){if(!room.darkAllowed)throw Error("В этом круге тёмная уже закрыта");const target=Math.max(Number(amount)||11,MIN_BET+1,room.currentBet+1);if(target>MAX_BET)throw Error("Нельзя затемнить выше лимита ставки");put(room,p,target-p.bet);p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;}else{p.mode="normal";p.cardsVisible=true;if(p.id===room.players[0].id)room.darkAllowed=false;}
+  if(action==="dark"){if(!room.darkAllowed)throw Error("В этом круге тёмная уже закрыта");const target=Math.max(Number(amount)||11,MIN_BET+1,room.currentBet+1);if(target>MAX_BET)throw Error("Нельзя затемнить выше лимита ставки");put(room,p,target-p.bet);p.mode="dark";p.cardsVisible=false;room.darkPlayerId=p.id;room.darkBet=target;}else{p.mode="normal";p.cardsVisible=true;if(p.id===room.roundStarterId)room.darkAllowed=false;}
   p.ready=true;room.history.push(p.name+(action==="dark"?" играет в тёмную":" выбрал обычную игру"));
   const n=room.players.find(x=>!x.ready);if(n)room.currentPlayerId=n.id;else betting(room,room.roundStarterId);return;
  }
